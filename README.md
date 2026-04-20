@@ -1,6 +1,6 @@
 # Claude Code Dream
 
-A nightly "dream agent" for Claude Code that reviews the past few days of your sessions, proposes updates to your project's long-term memory, and lets you approve them with a checkbox UI.
+A "dream agent" for Claude Code that reviews the past few days of your sessions, proposes updates to your project's long-term memory, and lets you approve them with a checkbox UI.
 
 It is an external re-implementation of the old **Dream feature** that once shipped inside Claude Code's *auto memory* system — the one that ran in the background, read your recent transcripts, and suggested changes to your saved memory files. That built-in feature was removed; this project emulates its behaviour as a local cron-driven pipeline you run against your own Claude Code session logs.
 
