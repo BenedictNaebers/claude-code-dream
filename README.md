@@ -95,12 +95,15 @@ One entry per project you want dreamed about. Each gets its own subdirectory und
 ```bash
 # generate a report (reads recent sessions, writes ~/dream/reports/<slug>/<date>.md)
 python3 dream_run.py
+python3 dream_run.py --lookback-days 7   # override the default 3-day window
 
 # open the UI to tick boxes and apply
 python3 dream_ui.py
-#   Run Dream        -> runs dream_run.py
+#   Run Dream        -> runs dream_run.py (lookback days picker is in the toolbar)
 #   Apply Selections -> runs apply_dream.py on the latest report
 ```
+
+The UI has a "Lookback N days" input next to the Run Dream button; changes persist across reloads via `localStorage`. The default and allowed range come from `LOOKBACK_DAYS` / `LOOKBACK_MIN` / `LOOKBACK_MAX` in `dream_run.py`.
 
 Or skip the UI and do it on the command line:
 

@@ -30,7 +30,16 @@ from typing import Optional
 from flask import Flask, abort, jsonify, render_template_string, request
 
 from apply_dream import APPLIED_ROOT, _CHECKED_RE
-from dream_run import DREAM_ROOT, HERE, LOG_ROOT, PROJECTS, REPORT_ROOT
+from dream_run import (
+    DREAM_ROOT,
+    HERE,
+    LOG_ROOT,
+    LOOKBACK_DAYS,
+    LOOKBACK_MAX,
+    LOOKBACK_MIN,
+    PROJECTS,
+    REPORT_ROOT,
+)
 
 UI_LOG_ROOT = LOG_ROOT / "ui"
 HOST = "127.0.0.1"
@@ -193,6 +202,9 @@ def index():
         multi=len(PROJECTS) > 1,
         projects=[Path(p).name for p in PROJECTS],
         default_project=Path(PROJECTS[0]).name,
+        lookback_default=LOOKBACK_DAYS,
+        lookback_min=LOOKBACK_MIN,
+        lookback_max=LOOKBACK_MAX,
     )
 
 
@@ -210,13 +222,27 @@ def status():
 
 @app.post("/run")
 def run():
+    payload = request.get_json(force=True, silent=True) or {}
+    lookback = payload.get("lookback_days", LOOKBACK_DAYS)
+    try:
+        lookback = int(lookback)
+    except (TypeError, ValueError):
+        return jsonify({"error": "lookback_days must be an integer"}), 400
+    if not LOOKBACK_MIN <= lookback <= LOOKBACK_MAX:
+        return jsonify({
+            "error": f"lookback_days must be between {LOOKBACK_MIN} and {LOOKBACK_MAX}",
+        }), 400
+
     with _lock:
         if runner.is_running():
             return jsonify({"error": "runner already running"}), 409
         ts = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
         log_path = spawn(
             runner,
-            [sys.executable, str(HERE / "dream_run.py")],
+            [
+                sys.executable, str(HERE / "dream_run.py"),
+                "--lookback-days", str(lookback),
+            ],
             f"run-{ts}.log",
         )
     return jsonify({"started": True, "log": str(log_path)}), 202
@@ -404,10 +430,13 @@ HTML = r"""<!doctype html>
     background: transparent; border-color: var(--border); color: var(--muted);
   }
 
-  select {
+  select, input[type=number] {
     font: inherit; padding: 6px 10px; border-radius: var(--radius-sm);
     border: 1px solid var(--border); background: var(--surface);
     color: var(--text);
+  }
+  input[type=number].lookback {
+    width: 64px; text-align: right;
   }
   label.field { color: var(--muted); font-size: 13px; }
 
@@ -518,6 +547,12 @@ HTML = r"""<!doctype html>
 
   <div class="card actions">
     <button id="run" class="primary">Run Dream</button>
+    <label class="field" for="lookback">Lookback</label>
+    <input id="lookback" class="lookback" type="number"
+           min="{{ lookback_min }}" max="{{ lookback_max }}"
+           value="{{ lookback_default }}"
+           title="How many days of recent session logs to analyse">
+    <span class="field">days</span>
     <span id="run-chip" class="chip s-idle"><span class="dot"></span><span class="t">idle</span></span>
     <button id="apply">Apply Selections</button>
     <span id="apply-chip" class="chip s-idle"><span class="dot"></span><span class="t">idle</span></span>
@@ -553,6 +588,26 @@ const $ = (id) => document.getElementById(id);
 const projectSel = $("project");
 const DEFAULT_PROJECT = {{ default_project|tojson }};
 const curProject = () => (projectSel ? projectSel.value : DEFAULT_PROJECT);
+
+const LOOKBACK_MIN = {{ lookback_min }};
+const LOOKBACK_MAX = {{ lookback_max }};
+const LOOKBACK_DEFAULT = {{ lookback_default }};
+const LOOKBACK_STORAGE_KEY = "dream.lookbackDays";
+
+const lookbackEl = $("lookback");
+const clampLookback = (n) => {
+  if (!Number.isFinite(n)) return LOOKBACK_DEFAULT;
+  return Math.max(LOOKBACK_MIN, Math.min(LOOKBACK_MAX, Math.round(n)));
+};
+try {
+  const saved = parseInt(localStorage.getItem(LOOKBACK_STORAGE_KEY), 10);
+  if (!Number.isNaN(saved)) lookbackEl.value = String(clampLookback(saved));
+} catch {}
+lookbackEl.addEventListener("change", () => {
+  const v = clampLookback(parseInt(lookbackEl.value, 10));
+  lookbackEl.value = String(v);
+  try { localStorage.setItem(LOOKBACK_STORAGE_KEY, String(v)); } catch {}
+});
 
 async function getJSON(url) { const r = await fetch(url); return r.json(); }
 async function getText(url) { const r = await fetch(url); return r.ok ? r.text() : null; }
@@ -602,6 +657,7 @@ async function refreshStatus() {
   }
 
   $("run").disabled = s.runner.state === "running";
+  lookbackEl.disabled = s.runner.state === "running";
 
   let applyDisabled = false, applyTitle = "";
   if (s.runner.state === "running")       { applyDisabled = true; applyTitle = "Runner is still running"; }
@@ -704,7 +760,10 @@ $("report-body").addEventListener("change", async (ev) => {
 
 $("run").addEventListener("click", async () => {
   $("run").disabled = true;
-  const r = await postJSON("/run");
+  const lookback = clampLookback(parseInt(lookbackEl.value, 10));
+  lookbackEl.value = String(lookback);
+  try { localStorage.setItem(LOOKBACK_STORAGE_KEY, String(lookback)); } catch {}
+  const r = await postJSON("/run", { lookback_days: lookback });
   if (!r.ok) alert("Failed to start runner: " + (r.body.error || r.status));
   refreshStatus();
 });

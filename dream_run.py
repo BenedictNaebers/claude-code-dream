@@ -11,6 +11,7 @@ Intended to be triggered by launchd / Task Scheduler once per day.
 """
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import os
 import subprocess
@@ -25,8 +26,10 @@ PROJECTS: list[str] = [
     # add more absolute project paths here
 ]
 
-# Include sessions modified within the last N days.
+# Default lookback window. Can be overridden per-run via --lookback-days.
 LOOKBACK_DAYS = 3
+LOOKBACK_MIN = 1
+LOOKBACK_MAX = 30
 
 # Permission mode for the headless claude run. The dream prompt explicitly
 # restricts writes to the report path, so bypassPermissions is the expected
@@ -111,17 +114,17 @@ def log(slug: str, msg: str) -> None:
 # --- Per-project run ---------------------------------------------------------
 
 
-def run_for_project(project_path: Path, date_str: str) -> None:
+def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> None:
     slug = project_path.name
-    log(slug, "starting")
+    log(slug, f"starting (lookback={lookback_days}d)")
 
     if not project_path.is_dir():
         log(slug, "project dir missing, skipping")
         return
 
-    sessions = recent_sessions(project_path, LOOKBACK_DAYS)
+    sessions = recent_sessions(project_path, lookback_days)
     if not sessions:
-        log(slug, f"no sessions in last {LOOKBACK_DAYS}d, skipping")
+        log(slug, f"no sessions in last {lookback_days}d, skipping")
         return
 
     inbox_dir = INBOX_ROOT / slug
@@ -181,9 +184,22 @@ def main() -> None:
     if not PROMPT_TEMPLATE.exists():
         sys.exit(f"prompt template not found: {PROMPT_TEMPLATE}")
 
+    parser = argparse.ArgumentParser(description="Nightly dream-agent runner")
+    parser.add_argument(
+        "--lookback-days", type=int, default=LOOKBACK_DAYS,
+        help=f"How many days of session logs to analyse "
+             f"(default {LOOKBACK_DAYS}, range {LOOKBACK_MIN}-{LOOKBACK_MAX})",
+    )
+    args = parser.parse_args()
+
+    if not LOOKBACK_MIN <= args.lookback_days <= LOOKBACK_MAX:
+        sys.exit(
+            f"--lookback-days must be between {LOOKBACK_MIN} and {LOOKBACK_MAX}"
+        )
+
     date_str = dt.date.today().isoformat()
     for project in PROJECTS:
-        run_for_project(Path(project), date_str)
+        run_for_project(Path(project), date_str, args.lookback_days)
 
 
 if __name__ == "__main__":
