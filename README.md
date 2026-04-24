@@ -14,17 +14,29 @@ Nothing happens in the foreground, nothing blocks session startup, and no memory
 
 ## Install
 
-```
-/plugin install /Users/benedict.naebers/Projects/CCDreamFeature
-```
-
-Or from a git remote:
+This repo is its own marketplace. From inside Claude Code:
 
 ```
-/plugin install <repo-url>
+/plugin marketplace add BenedictNaebers/claude-code-dream
+/plugin install ccdream@claude-code-dream
 ```
 
-Restart Claude Code so the `SessionStart` hook registers. The next interactive session that day fires the first run.
+Run `/reload-plugins` (or restart Claude Code) so the `SessionStart` hook registers. The next interactive session that day fires the first run.
+
+### Updating
+
+When a new version lands on `main`:
+
+```
+/plugin marketplace update claude-code-dream
+/plugin update ccdream@claude-code-dream
+```
+
+### Local-dev install (for testing before publishing a change)
+
+```bash
+claude --plugin-dir /path/to/your/clone/claude-code-dream
+```
 
 ## User-facing commands
 
