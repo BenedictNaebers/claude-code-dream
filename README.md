@@ -95,6 +95,32 @@ touch ~/.claude/projects/<encoded>/memory/.dream-opt-out
 
 The `<encoded>` segment is the project's absolute path with `/` and `.` replaced by `-`. If you're not sure, `ls ~/.claude/projects/` and pick the entry matching your project.
 
+## Configuration
+
+### Lookback window
+
+By default the dream agent reads the last **3 days** of sessions per project. Longer windows catch signals from days you skipped (weekends, time off); the tradeoff is higher Sonnet cost and latency per run. Overlap is safe — the dream prompt's `## Duplicates / already captured` section flags things already in memory and `auto_apply` ignores them — but not free.
+
+Override by setting `CCDREAM_LOOKBACK_DAYS` in the `env` block of `~/.claude/settings.json`:
+
+```jsonc
+{
+  "env": {
+    "CCDREAM_LOOKBACK_DAYS": "7"
+  }
+}
+```
+
+Valid range: 1–30 (enforced by `dream_run.py`; values outside fail the per-project run). When set, the daily log prints `lookback override: <N>d` on the first line so you know it took effect.
+
+One-off override (e.g. catching up after vacation without editing settings):
+
+```
+/ccdream:dream-run-now 14
+```
+
+The argument is a one-shot `CCDREAM_LOOKBACK_DAYS` for that single foreground run.
+
 ## Model
 
 Sonnet. Reading filtered transcripts and producing a structured report is well within Sonnet's range; Opus would burn Opus-specific usage limits for no quality gain.
