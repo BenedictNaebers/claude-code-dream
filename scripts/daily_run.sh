@@ -23,25 +23,43 @@ trap cleanup EXIT
 # Acquire the lock if we were invoked manually (hook already holds it otherwise).
 mkdir "${LOCK}" 2>/dev/null || true
 
+# Portable per-project timeout. GNU coreutils on Linux; homebrew coreutils on
+# macOS installs `timeout` (and/or `gtimeout`). Stock macOS has neither — in
+# that case we accept uncapped runs rather than hanging the whole pipeline.
+run_with_timeout() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 600 "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout 600 "$@"
+  else
+    "$@"
+  fi
+}
+
 {
   echo "=== ccdream daily run: $(date -Iseconds) ==="
   any_failed=0
 
-  mapfile -t PROJECTS < <(python3 "${PLUGIN_ROOT}/scripts/discover_projects.py" | sort)
+  # Portable array read: `mapfile` is bash 4+ (not on macOS /bin/bash 3.2).
+  PROJECTS=()
+  while IFS= read -r project_line; do
+    [ -n "${project_line}" ] && PROJECTS+=("${project_line}")
+  done < <(python3 "${PLUGIN_ROOT}/scripts/discover_projects.py" | sort)
 
-  [ "${#PROJECTS[@]}" -eq 0 ] && echo "[ccdream] no eligible projects discovered"
+  if [ "${#PROJECTS[@]}" -eq 0 ]; then
+    echo "[ccdream] no eligible projects discovered"
+  else
+    for project in "${PROJECTS[@]}"; do
+      echo "--- project: ${project}"
 
-  for project in "${PROJECTS[@]}"; do
-    [ -z "${project}" ] && continue
-    echo "--- project: ${project}"
-
-    if ! timeout 600 python3 "${PLUGIN_ROOT}/scripts/dream_run.py" --project "${project}"; then
-      echo "[ccdream] dream_run FAILED for ${project}"; any_failed=1; continue
-    fi
-    if ! timeout 600 python3 "${PLUGIN_ROOT}/scripts/auto_apply.py" --project "${project}"; then
-      echo "[ccdream] auto_apply FAILED for ${project}"; any_failed=1; continue
-    fi
-  done
+      if ! run_with_timeout python3 "${PLUGIN_ROOT}/scripts/dream_run.py" --project "${project}"; then
+        echo "[ccdream] dream_run FAILED for ${project}"; any_failed=1; continue
+      fi
+      if ! run_with_timeout python3 "${PLUGIN_ROOT}/scripts/auto_apply.py" --project "${project}"; then
+        echo "[ccdream] auto_apply FAILED for ${project}"; any_failed=1; continue
+      fi
+    done
+  fi
 
   if [ "${any_failed}" -eq 0 ]; then
     echo "${TODAY}" > "${STAMP}"
