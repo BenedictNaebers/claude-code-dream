@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Nightly dream-agent runner.
+"""Per-project dream-agent runner.
 
-For each configured project:
+For the single project passed via --project:
   1. Filter recent session logs via filter_session.py -> inbox file.
   2. Render dream-prompt.md with substituted paths.
   3. Invoke `claude -p` with cwd set to the project so auto-memory injects.
   4. Log stdout/stderr; the report is written by Claude to REPORT_PATH.
 
-Intended to be triggered by launchd / Task Scheduler once per day.
+Intended to be called by scripts/daily_run.sh once per project per day.
 """
 from __future__ import annotations
 
@@ -19,12 +19,6 @@ import sys
 from pathlib import Path
 
 # --- Configuration -----------------------------------------------------------
-
-# Projects to analyse. One dream report per project, per run.
-PROJECTS: list[str] = [
-    "/Users/benedict.naebers/Projects/world-insight-wision",
-    # add more absolute project paths here
-]
 
 # Default lookback window. Can be overridden per-run via --lookback-days.
 LOOKBACK_DAYS = 3
@@ -49,7 +43,7 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 
 HERE = Path(__file__).parent.resolve()
 FILTER_SCRIPT = HERE / "filter_session.py"
-PROMPT_TEMPLATE = HERE / "dream-prompt.md"
+PROMPT_TEMPLATE = HERE.parent / "prompts" / "dream-prompt.md"
 
 # Kept outside ~/.claude/ because Claude Code sandboxes writes to that path.
 DREAM_ROOT = Path.home() / "dream"
@@ -184,7 +178,11 @@ def main() -> None:
     if not PROMPT_TEMPLATE.exists():
         sys.exit(f"prompt template not found: {PROMPT_TEMPLATE}")
 
-    parser = argparse.ArgumentParser(description="Nightly dream-agent runner")
+    parser = argparse.ArgumentParser(description="Per-project dream-agent runner")
+    parser.add_argument(
+        "--project", required=True,
+        help="Absolute path to the project to analyse",
+    )
     parser.add_argument(
         "--lookback-days", type=int, default=LOOKBACK_DAYS,
         help=f"How many days of session logs to analyse "
@@ -197,9 +195,7 @@ def main() -> None:
             f"--lookback-days must be between {LOOKBACK_MIN} and {LOOKBACK_MAX}"
         )
 
-    date_str = dt.date.today().isoformat()
-    for project in PROJECTS:
-        run_for_project(Path(project), date_str, args.lookback_days)
+    run_for_project(Path(args.project), dt.date.today().isoformat(), args.lookback_days)
 
 
 if __name__ == "__main__":
