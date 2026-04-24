@@ -40,9 +40,35 @@ claude --plugin-dir /path/to/your/clone/claude-code-dream
 
 ## User-facing commands
 
-- `/dream-status` — last run date, failure flag, per-project pending counts, oldest pending age.
-- `/dream-run-now` — force a run immediately in the foreground, streaming progress. Useful for testing.
-- `/dream-review` — interactive walkthrough of the current project's pending items. Invoked from inside the project directory.
+- `/ccdream:dream-status` — last run date, in-progress state, per-project pending counts, oldest pending age. (All plugin commands are namespaced with `/ccdream:`.)
+- `/ccdream:dream-run-now` — force a run immediately in the foreground, streaming progress. Useful for testing.
+- `/dream-review` — interactive walkthrough of the current project's pending items. Invoked from inside the project directory. (Skill, not namespaced.)
+
+## Status-line integration (optional)
+
+The plugin ships `scripts/status_line.sh` — a compact snippet that prints `⏳ dream: <slug>` while the worker is running, `⚠ dream failed` if the last run errored, and nothing when idle. Wire it into `~/.claude/settings.json` however fits your existing setup.
+
+**Standalone** (ccdream-only status line):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"${HOME}/.claude/plugins/cache/claude-code-dream/ccdream/*/scripts/status_line.sh\"",
+    "refreshInterval": 3000
+  }
+}
+```
+
+**Composed with an existing status-line script**: have your script append the snippet's output:
+
+```bash
+# inside your existing statusLine script, at the end:
+snippet=$(bash "$HOME"/.claude/plugins/cache/claude-code-dream/ccdream/*/scripts/status_line.sh)
+[ -n "$snippet" ] && printf ' | %s' "$snippet"
+```
+
+Version-glob (`ccdream/*/`) means you don't have to update the path when the plugin version bumps.
 
 ## Data layout
 
