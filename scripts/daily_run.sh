@@ -38,6 +38,9 @@ run_with_timeout() {
 
 {
   echo "=== ccdream daily run: $(date -Iseconds) ==="
+  if [ -n "${CCDREAM_LOOKBACK_DAYS:-}" ]; then
+    echo "lookback override: ${CCDREAM_LOOKBACK_DAYS}d"
+  fi
   any_failed=0
 
   # Portable array read: `mapfile` is bash 4+ (not on macOS /bin/bash 3.2).
@@ -52,7 +55,15 @@ run_with_timeout() {
     for project in "${PROJECTS[@]}"; do
       echo "--- project: ${project}"
 
-      if ! run_with_timeout python3 "${PLUGIN_ROOT}/scripts/dream_run.py" --project "${project}"; then
+      # Build dream_run command; only append --lookback-days when the env var
+      # is set. Avoid `"${arr[@]:-}"` — bash 3.2 under set -u expands that to a
+      # literal empty string, which argparse rejects as an unknown arg.
+      DREAM_CMD=(python3 "${PLUGIN_ROOT}/scripts/dream_run.py" --project "${project}")
+      if [ -n "${CCDREAM_LOOKBACK_DAYS:-}" ]; then
+        DREAM_CMD+=(--lookback-days "${CCDREAM_LOOKBACK_DAYS}")
+      fi
+
+      if ! run_with_timeout "${DREAM_CMD[@]}"; then
         echo "[ccdream] dream_run FAILED for ${project}"; any_failed=1; continue
       fi
       if ! run_with_timeout python3 "${PLUGIN_ROOT}/scripts/auto_apply.py" --project "${project}"; then
