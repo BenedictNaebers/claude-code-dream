@@ -2,12 +2,12 @@
 """Apply a reviewed dream report: execute `[x]` items, archive the report.
 
 Usage:
-    apply_dream.py                           # latest report, only if PROJECTS has one entry
-    apply_dream.py <project-name>            # latest report for that project
-    apply_dream.py <path/to/report.md>       # a specific report
+    apply_dream.py --project <abs-path>
+    apply_dream.py --project <abs-path> --report <file.md>
 """
 from __future__ import annotations
 
+import argparse
 import re
 import subprocess
 import sys
@@ -18,13 +18,12 @@ from dream_run import (
     CLAUDE_FLAGS,
     DREAM_ROOT,
     HERE,
-    PROJECTS,
     REPORT_ROOT,
     encoded_project_dir,
     log,
 )
 
-APPLY_PROMPT = HERE / "apply-prompt.md"
+APPLY_PROMPT = HERE.parent / "prompts" / "apply-prompt.md"
 APPLIED_ROOT = DREAM_ROOT / "applied"
 
 _CHECKED_RE = re.compile(r"^\s*-\s*\[[xX]\]", re.MULTILINE)
@@ -34,31 +33,17 @@ def has_checked_items(report_path: Path) -> bool:
     return bool(_CHECKED_RE.search(report_path.read_text()))
 
 
-def find_project_by_slug(slug: str) -> Path:
-    for p in PROJECTS:
-        path = Path(p)
-        if path.name == slug or str(path) == slug:
-            return path
-    sys.exit(f"project '{slug}' not in PROJECTS")
-
-
-def resolve_target(arg: str | None) -> tuple[Path, Path]:
-    """Resolve (project_path, report_path) from the CLI argument."""
-    if arg and arg.endswith(".md"):
-        report_path = Path(arg).expanduser().resolve()
+def resolve_target(args: argparse.Namespace) -> tuple[Path, Path]:
+    """Resolve (project_path, report_path) from parsed CLI args."""
+    project_path = Path(args.project).expanduser().resolve()
+    slug = project_path.name
+    if args.report:
+        report_path = Path(args.report).expanduser().resolve()
         if not report_path.exists():
             sys.exit(f"report not found: {report_path}")
-        project_path = find_project_by_slug(report_path.parent.name)
         return project_path, report_path
 
-    if arg:
-        project_path = find_project_by_slug(arg)
-    elif len(PROJECTS) == 1:
-        project_path = Path(PROJECTS[0])
-    else:
-        sys.exit("multiple projects configured — pass a project name or report path")
-
-    report_dir = REPORT_ROOT / project_path.name
+    report_dir = REPORT_ROOT / slug
     reports = sorted(report_dir.glob("*.md"))
     if not reports:
         sys.exit(f"no dream reports in {report_dir}")
@@ -69,8 +54,12 @@ def main() -> None:
     if not APPLY_PROMPT.exists():
         sys.exit(f"apply prompt not found: {APPLY_PROMPT}")
 
-    arg = sys.argv[1] if len(sys.argv) > 1 else None
-    project_path, report_path = resolve_target(arg)
+    ap = argparse.ArgumentParser(description="Apply a reviewed dream report")
+    ap.add_argument("--project", required=True, help="Absolute project path")
+    ap.add_argument("--report", help="Specific report file; defaults to latest for project")
+    args = ap.parse_args()
+
+    project_path, report_path = resolve_target(args)
     slug = project_path.name
 
     if not has_checked_items(report_path):

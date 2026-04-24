@@ -1,0 +1,13 @@
+{
+  "name": "claude-code-dream",
+  "description": "Nightly dream agent for Claude Code — reviews recent sessions and consolidates long-term memory.",
+  "owner": { "name": "Benedict Naebers" },
+  "plugins": [
+    {
+      "name": "ccdream",
+      "description": "Reviews recent Claude Code sessions, auto-applies high-confidence memory updates, queues the rest for /dream-review.",
+      "source": "./",
+      "version": "0.1.0"
+    }
+  ]
+}
