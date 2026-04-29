@@ -42,6 +42,7 @@ run_with_timeout() {
     echo "lookback override: ${CCDREAM_LOOKBACK_DAYS}d"
   fi
   any_failed=0
+  any_succeeded=0
 
   # Portable array read: `mapfile` is bash 4+ (not on macOS /bin/bash 3.2).
   PROJECTS=()
@@ -69,15 +70,25 @@ run_with_timeout() {
       if ! run_with_timeout python3 "${PLUGIN_ROOT}/scripts/auto_apply.py" --project "${project}"; then
         echo "[ccdream] auto_apply FAILED for ${project}"; any_failed=1; continue
       fi
+
+      # auto_apply.py moves the report to applied/ on success; check both
+      # locations so a report counts whether or not it was archived.
+      slug="$(basename "${project}")"
+      if [ -f "${DREAM_DIR}/reports/${slug}/${TODAY}.md" ] \
+         || [ -f "${DREAM_DIR}/applied/${slug}/${TODAY}.md" ]; then
+        any_succeeded=1
+      fi
     done
   fi
 
-  if [ "${any_failed}" -eq 0 ]; then
+  if [ "${any_failed}" -eq 1 ]; then
+    touch "${FAIL_FLAG}"
+    echo "=== ccdream daily run: finished with failures ==="
+  elif [ "${any_succeeded}" -eq 1 ]; then
     echo "${TODAY}" > "${STAMP}"
     rm -f "${FAIL_FLAG}"
     echo "=== ccdream daily run: success ==="
   else
-    touch "${FAIL_FLAG}"
-    echo "=== ccdream daily run: finished with failures ==="
+    echo "=== ccdream daily run: nothing to do (no reports produced; STAMP not written) ==="
   fi
 } 2>&1 | tee -a "${LOG_FILE}"

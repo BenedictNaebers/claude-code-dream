@@ -108,18 +108,22 @@ def log(slug: str, msg: str) -> None:
 # --- Per-project run ---------------------------------------------------------
 
 
-def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> None:
+def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> bool:
+    """Return False when the run failed (claude -p exited non-zero or no report
+    file was produced). True for success and for legitimate skips (no project
+    dir, no recent sessions). Callers exit non-zero on False so daily_run.sh
+    sets FAIL_FLAG instead of STAMP."""
     slug = project_path.name
     log(slug, f"starting (lookback={lookback_days}d)")
 
     if not project_path.is_dir():
         log(slug, "project dir missing, skipping")
-        return
+        return True
 
     sessions = recent_sessions(project_path, lookback_days)
     if not sessions:
         log(slug, f"no sessions in last {lookback_days}d, skipping")
-        return
+        return True
 
     inbox_dir = INBOX_ROOT / slug
     report_dir = REPORT_ROOT / slug
@@ -160,13 +164,14 @@ def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> No
 
     if result.returncode != 0:
         log(slug, f"claude -p exited {result.returncode}; see {log_path}")
-        return
+        return False
 
     if not report_path.exists():
         log(slug, f"claude -p finished but no report at {report_path}; see {log_path}")
-        return
+        return False
 
     log(slug, f"done -> {report_path}")
+    return True
 
 
 # --- Entry point -------------------------------------------------------------
@@ -195,7 +200,10 @@ def main() -> None:
             f"--lookback-days must be between {LOOKBACK_MIN} and {LOOKBACK_MAX}"
         )
 
-    run_for_project(Path(args.project), dt.date.today().isoformat(), args.lookback_days)
+    if not run_for_project(
+        Path(args.project), dt.date.today().isoformat(), args.lookback_days
+    ):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
