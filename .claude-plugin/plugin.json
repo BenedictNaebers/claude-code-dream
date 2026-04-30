@@ -1,6 +1,6 @@
 {
   "name": "ccdream",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Nightly dream agent: reviews recent Claude Code sessions, auto-applies high-confidence memory updates, queues the rest for review via /dream-review.",
   "author": { "name": "Benedict Naebers" }
 }

@@ -130,7 +130,31 @@ def main() -> int:
         print(f"[auto_apply] no report at {report_path}; nothing to do")
         return 0
 
-    blocks = parse(report_path.read_text())
+    report_text = report_path.read_text()
+
+    # The agent occasionally drifts from the prompt's "Report format" and
+    # produces free-form headings (e.g. "## Memory Proposals" / "### ADD: ..."
+    # instead of "## Proposed memory changes" / "### Additions"). The parser
+    # below silently finds zero items in that case, archives the report, and
+    # we lose a day of memory updates without noticing. Fail loudly instead;
+    # leave the report in reports/ so it's visible.
+    required = [
+        "## Proposed memory changes",
+        "### Additions",
+        "### Updates",
+        "## Pruning candidates",
+    ]
+    missing = [h for h in required if h not in report_text]
+    if missing:
+        print(
+            f"[auto_apply] {report_path} is malformed (missing headings: "
+            f"{missing}). Dream agent drifted from the prompt format; "
+            "leaving report in place for inspection. Re-run with /dream-run-now.",
+            file=sys.stderr,
+        )
+        return 1
+
+    blocks = parse(report_text)
     auto_count = 0
     pending: dict[str, list[Block]] = {
         "Additions": [],
