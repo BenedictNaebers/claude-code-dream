@@ -7,7 +7,7 @@
       "name": "ccdream",
       "description": "Reviews recent Claude Code sessions, auto-applies high-confidence memory updates, queues the rest for /dream-review.",
       "source": "./",
-      "version": "0.1.4"
+      "version": "0.1.5"
     }
   ]
 }

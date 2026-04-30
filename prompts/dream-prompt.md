@@ -62,7 +62,7 @@ Propose each pruning candidate with reasoning. Prefer **review?** over **remove*
 
 ## Report format
 
-Write to `{{REPORT_PATH}}` using this structure exactly:
+Write to `{{REPORT_PATH}}` using this structure exactly. Headings and item shape are parsed mechanically by `auto_apply.py` — see the format-compliance rule at the bottom.
 
     # Dream Report — <YYYY-MM-DD>
 
@@ -105,6 +105,7 @@ Write to `{{REPORT_PATH}}` using this structure exactly:
 
 ## Rules
 
+- **Format compliance is mandatory.** The report is parsed mechanically. The headings `## Proposed memory changes`, `### Additions`, `### Updates`, and `## Pruning candidates` must appear with that exact wording and heading depth (case-sensitive). Every Addition and Update must be a `- [ ]` checkbox line followed by a `**Confidence:** <high|medium|low>` line. Do not invent alternative section names like `## Memory Proposals` or `### ADD: <filename>` — the applier will reject the entire report and the day is wasted.
 - Do **not** edit memory files in this run.
 - Do **not** write to any path except `{{REPORT_PATH}}`.
 - Do not quote long transcript passages — only the minimum needed to anchor a proposal.
