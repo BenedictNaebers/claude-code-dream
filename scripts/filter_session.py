@@ -14,7 +14,9 @@ import re
 import sys
 from pathlib import Path
 
-INCLUDE_THINKING = True
+# Session logs store only the encrypted signature for thinking blocks, not the
+# plaintext reasoning. Including them just emits empty `[THINKING]` headers.
+INCLUDE_THINKING = False
 
 TOOL_RESULT_HEAD = 200
 TOOL_RESULT_TAIL = 200
