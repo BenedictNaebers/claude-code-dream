@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import subprocess
 import sys
@@ -21,7 +22,7 @@ from pathlib import Path
 # --- Configuration -----------------------------------------------------------
 
 # Default lookback window. Can be overridden per-run via --lookback-days.
-LOOKBACK_DAYS = 3
+LOOKBACK_DAYS = 1
 LOOKBACK_MIN = 1
 LOOKBACK_MAX = 30
 
@@ -34,6 +35,12 @@ LOOKBACK_MAX = 30
 CLAUDE_FLAGS: list[str] = [
     "--permission-mode", "bypassPermissions",
     "--model", "sonnet",
+    # Static parts of the system prompt move into the first user message so
+    # they cache across daily runs of the same project.
+    "--exclude-dynamic-system-prompt-sections",
+    # Tools the dream + apply prompts actually use. Shrinks the tool-schema
+    # block sent to the model. Keep last — argparse variadic consumes the rest.
+    "--allowedTools", "Read", "Write", "Edit", "MultiEdit", "Bash",
 ]
 
 # Override with CLAUDE_BIN env var if `claude` isn't on PATH.
@@ -91,6 +98,28 @@ def recent_sessions(project_path: Path, lookback_days: int) -> list[Path]:
     )
 
 
+# Byte patterns for the tool_use entries that count as "actual work happened".
+# Browsing/Q&A sessions without any of these aren't worth a dream run.
+_EDIT_TOOL_PATTERNS = (
+    b'"name":"Edit"',
+    b'"name":"Write"',
+    b'"name":"MultiEdit"',
+    b'"name":"NotebookEdit"',
+)
+
+
+def has_meaningful_changes(sessions: list[Path]) -> bool:
+    for path in sessions:
+        try:
+            with path.open("rb") as f:
+                for line in f:
+                    if any(p in line for p in _EDIT_TOOL_PATTERNS):
+                        return True
+        except OSError:
+            continue
+    return False
+
+
 def render_prompt(
     template: str, input_path: Path, report_path: Path, memory_path: Path
 ) -> str:
@@ -125,6 +154,10 @@ def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> bo
         log(slug, f"no sessions in last {lookback_days}d, skipping")
         return True
 
+    if not has_meaningful_changes(sessions):
+        log(slug, f"no edits in last {lookback_days}d, skipping")
+        return True
+
     inbox_dir = INBOX_ROOT / slug
     report_dir = REPORT_ROOT / slug
     log_dir = LOG_ROOT / slug
@@ -150,17 +183,18 @@ def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> bo
     prompt = render_prompt(template, input_path, report_path, memory_path)
 
     # 3. Invoke claude -p. cwd = project so auto-memory context injects.
-    cmd = [CLAUDE_BIN, "-p", *CLAUDE_FLAGS]
-    with log_path.open("w") as logfile:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            text=True,
-            cwd=str(project_path),
-            stdout=logfile,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
+    # --output-format json gives us per-run usage so we can track per-project cost.
+    cmd = [CLAUDE_BIN, "-p", "--output-format", "json", *CLAUDE_FLAGS]
+    result = subprocess.run(
+        cmd,
+        input=prompt,
+        text=True,
+        cwd=str(project_path),
+        capture_output=True,
+        check=False,
+    )
+
+    usage_summary = write_run_log(log_path, result.stdout, result.stderr)
 
     if result.returncode != 0:
         log(slug, f"claude -p exited {result.returncode}; see {log_path}")
@@ -171,7 +205,44 @@ def run_for_project(project_path: Path, date_str: str, lookback_days: int) -> bo
         return False
 
     log(slug, f"done -> {report_path}")
+    if usage_summary:
+        log(slug, usage_summary)
     return True
+
+
+def write_run_log(log_path: Path, stdout: str, stderr: str) -> str:
+    """Write the claude -p log file and return a one-line usage summary.
+
+    On parse failure, dumps raw stdout so the run is still debuggable.
+    Returns an empty string when no usage info was extractable.
+    """
+    summary = ""
+    try:
+        data = json.loads(stdout) if stdout else None
+    except json.JSONDecodeError:
+        data = None
+
+    with log_path.open("w") as f:
+        if isinstance(data, dict):
+            u = data.get("usage") or {}
+            summary = (
+                f"cost=${data.get('total_cost_usd', 0):.4f} "
+                f"in={u.get('input_tokens', 0)} "
+                f"out={u.get('output_tokens', 0)} "
+                f"cache_w={u.get('cache_creation_input_tokens', 0)} "
+                f"cache_r={u.get('cache_read_input_tokens', 0)} "
+                f"duration={data.get('duration_ms', 0)}ms"
+            )
+            f.write(summary + "\n\n")
+            f.write(str(data.get("result", "")))
+            f.write("\n")
+        else:
+            f.write("[no parseable JSON from claude -p — raw stdout follows]\n")
+            f.write(stdout or "")
+        if stderr:
+            f.write("\n--- stderr ---\n")
+            f.write(stderr)
+    return summary
 
 
 # --- Entry point -------------------------------------------------------------
